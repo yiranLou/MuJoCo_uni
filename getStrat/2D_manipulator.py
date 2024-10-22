@@ -3,8 +3,10 @@ from mujoco.glfw import glfw
 import numpy as np
 import os
 
-xml_path = '../models/pendulum.xml'
-simend = 5
+xml_path = '../models/manipulator.xml' #xml file (assumes this is in the same folder as this file)
+simend = 20 #simulation time
+print_camera_config = 0 #set to 1 to print camera config
+                        #this is useful for initializing view of the model)
 
 # For callback functions
 button_left = False
@@ -13,30 +15,13 @@ button_right = False
 lastx = 0
 lasty = 0
 
+def init_controller(model,data):
+    #initialize the controller here. This function is called once, in the beginning
+    pass
+
 def controller(model, data):
-    """
-    This function implements a PD controller
-
-    Since there are no gravity compensation,
-    it will not be very accurate at tracking
-    the set point. It will be accurate if
-    gravity is turned off.
-    """
-    if actuator_type == "torque":
-        model.actuator_gainprm[0, 0] = 1
-        data.ctrl[0] = -10 * \
-            (data.sensordata[0] - 0.0) - \
-            1 * (data.sensordata[1] - 0.0)
-    elif actuator_type == "servo":
-        kp = 10.0
-        model.actuator_gainprm[1, 0] = kp
-        model.actuator_biasprm[1, 1] = -kp
-        data.ctrl[1] = -0.5
-
-        kv = 1.0
-        model.actuator_gainprm[2, 0] = kv
-        model.actuator_biasprm[2, 2] = -kv
-        data.ctrl[2] = 0.0
+    #put the controller here. This function is called inside the simulation.
+    pass
 
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
@@ -44,21 +29,29 @@ def keyboard(window, key, scancode, act, mods):
         mj.mj_forward(model, data)
 
 def mouse_button(window, button, act, mods):
-        # update button state
-        button_left = (glfw.get_mouse_button(
-            window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS)
-        button_middle = (glfw.get_mouse_button(
-            window, glfw.MOUSE_BUTTON_MIDDLE) == glfw.PRESS)
-        button_right = (glfw.get_mouse_button(
-            window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS)
+    # update button state
+    global button_left
+    global button_middle
+    global button_right
 
-        # update mouse position
-        glfw.get_cursor_pos(window)
+    button_left = (glfw.get_mouse_button(
+        window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS)
+    button_middle = (glfw.get_mouse_button(
+        window, glfw.MOUSE_BUTTON_MIDDLE) == glfw.PRESS)
+    button_right = (glfw.get_mouse_button(
+        window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS)
+
+    # update mouse position
+    glfw.get_cursor_pos(window)
 
 def mouse_move(window, xpos, ypos):
     # compute mouse displacement, save
     global lastx
     global lasty
+    global button_left
+    global button_middle
+    global button_right
+
     dx = xpos - lastx
     dy = ypos - lasty
     lastx = xpos
@@ -129,32 +122,63 @@ glfw.set_cursor_pos_callback(window, mouse_move)
 glfw.set_mouse_button_callback(window, mouse_button)
 glfw.set_scroll_callback(window, scroll)
 
-#set initial conditions
-data.qpos[0] = np.pi/2
+# Example on how to set camera configuration
+#initialize the controller here. This function is called once, in the beginning
+cam.azimuth = 89.83044433593757 ; cam.elevation = -89.0 ; cam.distance =  5.04038754800176
+cam.lookat =np.array([ 0.0 , 0.0 , 0.0 ])
 
-# Set camera configuration
-cam.azimuth = 90.0
-cam.distance = 5.0
-cam.elevation = -5
-cam.lookat = np.array([0.012768, -0.000000, 1.254336])
+#initialize the controller
+init_controller(model,data)
 
 #set the controller
-actuator_type = "torque"
 mj.set_mjcb_control(controller)
 
+N = 500
+q0_start = 0;
+q0_end = 1.57;
+q1_start = 0;
+q1_end = -2*3.14;
+q0 = np.linspace(q0_start,q0_end,N)
+q1 = np.linspace(q1_start,q1_end,N)
+
+#initialize
+data.qpos[0] = q0_start
+data.qpos[1] = q1_start
+i = 0;
+time = 0
+dt = 0.001;
+
 while not glfw.window_should_close(window):
-    simstart = data.time
+    time_prev = time
 
-    while (data.time - simstart < 1.0/60.0):
-        mj.mj_step(model, data)
+    while (time - time_prev < 1.0/60.0):
+        data.qpos[0] = q0[i];
+        data.qpos[1] = q1[i];
+        mj.mj_forward(model,data)
+        time +=dt
+        # mj.mj_step(model, data)
 
-    if (data.time>=simend):
+    i +=1
+
+    if data.site_xpos.size > 0:
+        print(data.site_xpos[0])
+    else:
+        print("No site position data available")
+
+    if (i>=N):
         break;
+    # if (data.time>=simend):
+    #     break;
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(
         window)
     viewport = mj.MjrRect(0, 0, viewport_width, viewport_height)
+
+    #print camera configuration (help to initialize the view)
+    if (print_camera_config==1):
+        print('cam.azimuth =',cam.azimuth,';','cam.elevation =',cam.elevation,';','cam.distance = ',cam.distance)
+        print('cam.lookat =np.array([',cam.lookat[0],',',cam.lookat[1],',',cam.lookat[2],'])')
 
     # Update scene and render
     mj.mjv_updateScene(model, data, opt, None, cam,

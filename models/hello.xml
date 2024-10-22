@@ -1,0 +1,22 @@
+<mujoco>
+  <option gravity="0 0 0" />
+  <worldbody>
+    <!-- Light source -->
+    <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+
+    <!-- Ground plane -->
+    <geom type="plane" size="1 1 0.1" rgba="0 0.9 0 1"/>
+
+    <!-- First body with a box -->
+    <body pos="0 0 1">
+      <joint type="free"/>
+      <geom type="box" size=".1 .2 .3" rgba="0.9 0 0 1"/>
+    </body>
+
+    <!-- Second body with another box -->
+    <body pos="0 0 2">
+      <joint type="free"/>
+      <geom type="box" size=".1 .2 .3" rgba="0 0 0.9 1"/>
+    </body>
+  </worldbody>
+</mujoco>
