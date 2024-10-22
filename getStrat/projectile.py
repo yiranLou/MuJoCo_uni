@@ -148,7 +148,7 @@ cam.lookat = np.array([ 0.0 , 0.0 , 0.0 ])
 
 #initialize the controller
 init_controller(model,data)
-#TODO
+
 data.qpos[0] = 0
 data.qpos[2] = 0.1
 data.qvel[0] = 0.5
