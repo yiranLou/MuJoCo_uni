@@ -1,5 +1,5 @@
 <mujoco>
-    <option gravity = "0 0 -9.81">
+    <option gravity="0 0 -9.81">
         <flag contact="enable" />
     </option>
 
@@ -13,8 +13,13 @@
         </body>
     </worldbody>
 
+    <sensor>
+    <jointpos name="joint_position" joint="joint0" />
+    <jointvel name="joint_velocity" joint="joint0" />
+    </sensor>
+
     <actuator>
-        <motor name="torque" joint="joint0" gear="1" ctrllimited="true" ctrlrange="-100" />
+        <motor name="torque" joint="joint0" gear="1" ctrllimited="true" ctrlrange="-100 100" />
         <position name="position_servo" joint="joint0" kp="100" />
         <velocity name="velocity_servo" joint="joint0" kv="10" />
     </actuator>

@@ -1,12 +1,12 @@
 import mujoco as mj
-from matplotlib import pyplot as plt
 from mujoco.glfw import glfw
+import matplotlib.pyplot as plt
 import numpy as np
 import os
-import matplotlib
+import control
 
-xml_path = '../models/manipulator.xml' #xml file (assumes this is in the same folder as this file)
-simend = 20 #simulation time
+xml_path = '2D_double_pendulum.xml' #xml file (assumes this is in the same folder as this file)
+simend = 10 #simulation time
 print_camera_config = 0 #set to 1 to print camera config
                         #this is useful for initializing view of the model)
 
@@ -17,13 +17,104 @@ button_right = False
 lastx = 0
 lasty = 0
 
+#create the function xdot = f(x,u)
+def f(x,u):
+    #x=q0,q1,qdot0,qdot1
+    #u=torque
+
+    data.qpos[0] = x[0]
+    data.qpos[1] = x[1]
+    data.qvel[0] = x[2]
+    data.qvel[1] = x[3]
+    data.ctrl[0] = u[0]
+    mj.mj_forward(model,data)
+
+    #qddot = inv(M)*(data_ctrl-frc_bias)
+    M = np.zeros((2,2))
+    mj.mj_fullM(model,M,data.qM)
+    invM = np.linalg.inv(M)
+    frc_bias = np.array([data.qfrc_bias[0],data.qfrc_bias[1]])
+    tau = np.array([u[0],0])
+    qddot = np.matmul(invM,np.subtract(tau,frc_bias))
+
+    xdot = np.array([data.qvel[0],data.qvel[1],qddot[0],qddot[1]])
+    return xdot
+
+
+def linearize():
+
+    n = 4
+    m = 1
+    A = np.zeros((n,n))
+    B = np.zeros((n,m))
+
+    x0 = np.array([0,0,0,0])
+    u0 = np.array([0])
+    xdot0 = f(x0,u0)
+    #print(xdot0)
+
+    pert = 1e-2
+    #get A matrix
+    for i in range(0,n):
+        x = [0]*n
+        u = u0
+        for j in range(0,n):
+            x[j] = x0[j]
+        x[i] = x[i]+pert
+        xdot = f(x,u)
+        for k in range(0,n):
+            A[k,i] = (xdot[k]-xdot0[k])/pert
+
+    #get B matrix
+    for i in range(0,m):
+        x = x0
+        u = [0]*m
+        for j in range(0,m):
+            u[j] = u0[j]
+        u[i] = u[i]+pert
+        xdot = f(x,u)
+        for k in range(0,n):
+            B[k,i] = (xdot[k]-xdot0[k])/pert
+
+    return A,B
+
+
 def init_controller(model,data):
     #initialize the controller here. This function is called once, in the beginning
-    pass
+    #pass
+    global K
+
+    n = 4
+    m = 1
+
+    #1. linearization
+    A,B = linearize()
+    # print(A)
+    # print(B)
+
+    #2. linear quadratic regulator
+    Q = np.eye((n))
+    R = 1e-2*np.eye((m))
+    K,S,E = control.lqr(A,B,Q,R)
+    # print("K = ",K)
 
 def controller(model, data):
     #put the controller here. This function is called inside the simulation.
-    pass
+    # pass
+    global K
+
+    #1. apply congtrol u = -K*x
+    x = np.array([data.qpos[0],data.qpos[1],data.qvel[0],data.qvel[1]])
+    u = -K.dot(x)
+    data.ctrl[0] = u
+
+    #2 apply disturbance torque
+    tau_disturb_mean = 0
+    tau_disturb_dev = 20
+    tau_d0 = np.random.normal(tau_disturb_mean,tau_disturb_dev)
+    tau_d1 = np.random.normal(tau_disturb_mean,0.25*tau_disturb_dev)
+    data.qfrc_applied[0] = tau_d0
+    data.qfrc_applied[1] = tau_d1
 
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
@@ -125,8 +216,11 @@ glfw.set_mouse_button_callback(window, mouse_button)
 glfw.set_scroll_callback(window, scroll)
 
 # Example on how to set camera configuration
-#initialize the controller here. This function is called once, in the beginning
-cam.azimuth = 89.83044433593757 ; cam.elevation = -89.0 ; cam.distance =  5.04038754800176
+# cam.azimuth = 90
+# cam.elevation = -45
+# cam.distance = 2
+# cam.lookat = np.array([0.0, 0.0, 0])
+cam.azimuth = 90 ; cam.elevation = 5 ; cam.distance =  6
 cam.lookat =np.array([ 0.0 , 0.0 , 0.0 ])
 
 #initialize the controller
@@ -135,95 +229,14 @@ init_controller(model,data)
 #set the controller
 mj.set_mjcb_control(controller)
 
-N = 100
-theta1 = np.pi/3
-theta2 = -np.pi/2
-
-# q0_start = 0;
-# q0_end = 1.57;
-# q1_start = 0;
-# q1_end = -2*3.14;
-# q0 = np.linspace(q0_start,q0_end,N)
-# q1 = np.linspace(q1_start,q1_end,N)
-
-#initialize
-data.qpos[0] = theta1
-data.qpos[1] = theta2
-mj.mj_forward(model,data)
-position_Q = data.site_xpos[0]
-# print(position_Q)
-#r = 圆形轨迹半径
-r = 0.5;
-# center圆形轨迹的中心点
-center = np.array([position_Q[0]-r, position_Q[1]])
-phi = np.linspace(0.2*np.pi,N)
-x_ref = center[0] + r*np.cos(phi)
-y_ref = center[1] + r*np.sin(phi)
-i = 0;
-time = 0
-dt = 0.001;
-
 while not glfw.window_should_close(window):
-    time_prev = time
+    time_prev = data.time
 
-    while (time - time_prev < 1.0/60.0):
-        if i >= len(x_ref):
-            break
-            #Compute Jacobian J
-        #void mj_jac(const mjModel* m, const mjData* d,
-        # mjtNum* jacp, mjtNum* jacr,const mjtNum point[3], int body);
-        position_Q = data.site_xpos[0]
-        jacp = np.zeros((3,2)) #3 is for x,y,z and 2 is for theta1 and theta2
-        mj.mj_jac(model, data, jacp,None,
-                  position_Q, 2)
-        #print(jacp)
-        J = jacp[[0,1],:]
-        print(J)
-        #Compute inverse Jacobian J_inv
-        J_inv = np.linalg.inv(J)
-        print(J_inv)
+    while (data.time - time_prev < 1.0/60.0):
+        mj.mj_step(model, data)
 
-        #Compute dx
-        # X_ref = np.array([x_ref[i],y_ref[i]])
-        # X = np.array([position_Q[0],position_Q[1]])
-        # dx = X_ref -X
-
-        dx = np.array([x_ref[i]-position_Q[0],y_ref[i]-position_Q[1]])
-        print(dx)
-
-        #Compute dq = J_inv*dx
-        dq = J_inv.dot(dx)
-        print(dq)
-
-        #update theta1 and theta2
-        theta1 += dq[0]
-        theta2 += dq[1]
-
-        data.qpos[0] = theta1;
-        data.qpos[1] = theta2;
-        mj.mj_forward(model,data)
-        time +=dt
-        # mj.mj_step(model, data)
-
-    i +=1
-
-    # if data.site_xpos.size > 0:
-    #     print(data.site_xpos[0])
-    # else:
-    #     print("No site position data available")
-
-    if (i>=N):
-        plt.figure(1)
-        plt.plot (x_ref,y_ref,"r-.")
-        plt.ylabel("y")
-        plt.xlabel("x")
-        plt.gca().set_aspect('equal')
-        plt.show(block = False)
-        plt.pause(5)
-        plt.close()
+    if (data.time>=simend):
         break;
-    # if (data.time>=simend):
-    #     break;
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(
